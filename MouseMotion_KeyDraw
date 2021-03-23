@@ -1,0 +1,441 @@
+#include <GL/glut.h>
+#include <GL/glext.h>
+#ifndef WIN32
+#define GLX_GLXEXT_LEGACY
+#include <GL/glx.h>
+#define wglGetProcAddress glXGetProcAddressARB
+#endif
+#include <stdlib.h>
+#include <stdio.h>
+
+// wskaźnik na funkcję glDrawRangeElementsEXT
+
+PFNGLDRAWRANGEELEMENTSEXTPROC glDrawRangeElementsEXT = NULL;
+
+// stałe do obsługi menu podręcznego
+
+enum
+{
+    FULL_WINDOW, // aspekt obrazu - całe okno
+    ASPECT_1_1, // aspekt obrazu 1:1
+    EXIT // wyjście
+};
+
+// aspekt obrazu
+
+int aspect = FULL_WINDOW;
+
+// usunięcie definicji makr near i far
+
+#ifdef near
+#undef near
+#endif
+#ifdef far
+#undef far
+#endif
+
+// rozmiary bryły obcinania
+
+const GLdouble left = - 2.0;
+const GLdouble right = 2.0;
+const GLdouble bottom = - 2.0;
+const GLdouble top = 2.0;
+const GLdouble near = 3.0;
+const GLdouble far = 7.0;
+
+// kąty obrotu
+
+GLfloat rotatex = 0.0;
+GLfloat rotatey = 0.0;
+
+// wskaźnik naciśnięcia lewego przycisku myszki
+
+int button_state = GLUT_UP;
+
+// położenie kursora myszki
+
+int button_x, button_y;
+
+// współczynnik skalowania
+
+GLfloat scale = 2.0;
+
+// współrzędne wektorów normalnych i wierzchołków dwudziestościanu
+
+GLfloat normal_vertex[ 12 * 6 ] =
+{
+    0.000000, 0.848013, 0.529976, 0.000, 0.667, 0.500, // v0
+    0.000000, 0.848013, - 0.529976, 0.000, 0.667, - 0.500, // v1
+    0.000000, - 0.848013, - 0.529976, 0.000, - 0.667, - 0.500, // v2
+    0.000000, - 0.848013, 0.529976, 0.000, - 0.667, 0.500, // v3
+    0.848013, 0.529976, 0.000000, 0.667, 0.500, 0.000, // v4
+    0.848013, - 0.529976, 0.000000, 0.667, - 0.500, 0.000, // v5
+    - 0.848013, - 0.529976, 0.000000, - 0.667, - 0.500, 0.000, // v6
+    - 0.848013, 0.529976, 0.000000, - 0.667, 0.500, 0.000, // v7
+    0.529976, 0.000000, 0.848013, 0.500, 0.000, 0.667, // v8
+    - 0.529976, 0.000000, 0.848013, - 0.500, 0.000, 0.667, // v9
+    - 0.529976, 0.000000, - 0.848013, - 0.500, 0.000, - 0.667, // v10
+    0.529976, 0.000000, - 0.848013, 0.500, 0.000, - 0.667 // v11
+};
+
+// składowe kolorów wierzchołków dwudziestościanu
+
+GLfloat color[ 12 * 3 ] =
+{
+    1.0, 0.0, 0.0, // v0
+    1.0, 0.0, 1.0, // v1
+    1.0, 0.0, 0.0, // v2
+    1.0, 0.0, 1.0, // v3
+    0.0, 1.0, 0.0, // v4
+    1.0, 1.0, 0.0, // v5
+    0.0, 1.0, 0.0, // v6
+    1.0, 1.0, 0.0, // v7
+    0.0, 0.0, 1.0, // v8
+    0.0, 1.0, 1.0, // v9
+    0.0, 0.0, 1.0, // v10
+    0.0, 1.0, 1.0 // v11
+};
+
+// opis ścian dwudziestościanu
+
+GLubyte triangles[ 20 * 3 ] =
+{
+    2, 10, 11,
+    1, 11, 10,
+    1, 10, 7,
+    1, 4, 11,
+    0, 1, 7,
+    0, 4, 1,
+    0, 9, 8,
+    3, 8, 9,
+    0, 7, 9,
+    0, 8, 4,
+    3, 9, 6,
+    3, 5, 8,
+    2, 3, 6,
+    2, 5, 3,
+    2, 6, 10,
+    2, 11, 5,
+    6, 7, 10,
+    6, 9, 7,
+    4, 5, 11,
+    4, 8, 5
+};
+
+// funkcja generująca scenę 3D
+
+void Display()
+{
+    // kolor tła - zawartość bufora koloru
+    glClearColor( 1.0, 1.0, 1.0, 1.0 );
+   
+    // czyszczenie bufora koloru i bufora głębokości
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+   
+    // wybór macierzy modelowania
+    glMatrixMode( GL_MODELVIEW );
+   
+    // macierz modelowania = macierz jednostkowa
+    glLoadIdentity();
+   
+    // przesunięcie układu współrzędnych obiektu do środka bryły odcinania
+    glTranslatef( 0, 0, -( near + far ) / 2 );
+   
+    // obroty obiektu
+    glRotatef( rotatex, 1.0, 0.0, 0.0 );
+    glRotatef( rotatey, 0.0, 1.0, 0.0 );
+   
+    // skalowanie obiektu - klawisze "+" i "-"
+    glScalef( scale, scale, scale );
+   
+    // włączenie testu bufora głębokości
+    glEnable( GL_DEPTH_TEST );
+   
+    // włączenie oświetlenia
+    glEnable( GL_LIGHTING );
+   
+    // włączenie światła GL_LIGHT0 z parametrami domyślnymi
+    glEnable( GL_LIGHT0 );
+   
+    // włączenie automatycznej normalizacji wektorów normalnych
+    glEnable( GL_NORMALIZE );
+   
+    // włączenie obsługi właściwości materiałów
+    glEnable( GL_COLOR_MATERIAL );
+   
+    // utworzenie danych o wektorach normalnych i współrzędnych wierzchołków
+    glInterleavedArrays( GL_N3F_V3F, 0, normal_vertex );
+   
+    // włączenie tablicy z danymi o kolorach wierzchołków
+    glEnableClientState( GL_COLOR_ARRAY );
+    glColorPointer( 3, GL_FLOAT, 0, color );
+   
+    // narysowanie tablic wierzchołków - wybór funkcji zależy
+    // od dostępności rozszerzenia EXT_draw_range_elements
+    if( glDrawRangeElementsEXT == NULL )
+         glDrawElements( GL_TRIANGLES, 20 * 3, GL_UNSIGNED_BYTE, triangles );
+    else
+         glDrawRangeElementsEXT( GL_TRIANGLES, 0, 11, 20 * 3, GL_UNSIGNED_BYTE, triangles );
+   
+    // skierowanie poleceń do wykonania
+    glFlush();
+   
+    // zamiana buforów koloru
+    glutSwapBuffers();
+}
+
+// zmiana wielkości okna
+
+void Reshape( int width, int height )
+{
+    // obszar renderingu - całe okno
+    glViewport( 0, 0, width, height );
+   
+    // wybór macierzy rzutowania
+    glMatrixMode( GL_PROJECTION );
+   
+    // macierz rzutowania = macierz jednostkowa
+    glLoadIdentity();
+   
+    // parametry bryły obcinania
+    if( aspect == ASPECT_1_1 )
+    {
+        // wysokość okna większa od wysokości okna
+        if( width < height && width > 0 )
+             glFrustum( left, right, bottom * height / width, top * height / width, near, far );
+        else
+       
+        // szerokość okna większa lub równa wysokości okna
+        if( width >= height && height > 0 )
+             glFrustum( left * width / height, right * width / height, bottom, top, near, far );
+       
+    }
+    else
+         glFrustum( left, right, bottom, top, near, far );
+   
+    // generowanie sceny 3D
+    Display();
+}
+
+// obsługa klawiatury
+
+void Keyboard( unsigned char key, int x, int y )
+{
+    // klawisz +
+    if( key == '+' )
+         scale += 0.05;
+    else
+   
+    // klawisz -
+    if( key == '-' && scale > 0.05 )
+         scale -= 0.05;
+   
+    // narysowanie sceny
+    Display();
+}
+
+// obsługa klawiszy funkcyjnych i klawiszy kursora
+
+void SpecialKeys( int key, int x, int y )
+{
+    switch( key )
+    {
+        // kursor w lewo
+    case GLUT_KEY_LEFT:
+        rotatey -= 1;
+        break;
+       
+        // kursor w górę
+    case GLUT_KEY_UP:
+        rotatex -= 1;
+        break;
+       
+        // kursor w prawo
+    case GLUT_KEY_RIGHT:
+        rotatey += 1;
+        break;
+       
+        // kursor w dół
+    case GLUT_KEY_DOWN:
+        rotatex += 1;
+        break;
+    }
+   
+    // odrysowanie okna
+    Reshape( glutGet( GLUT_WINDOW_WIDTH ), glutGet( GLUT_WINDOW_HEIGHT ) );
+}
+
+// obsługa przycisków myszki
+
+void MouseButton( int button, int state, int x, int y )
+{
+    if( button == GLUT_LEFT_BUTTON )
+    {
+        // zapamiętanie stanu lewego przycisku myszki
+        button_state = state;
+       
+        // zapamiętanie położenia kursora myszki
+        if( state == GLUT_DOWN )
+        {
+            button_x = x;
+            button_y = y;
+        }
+    }
+}
+
+// obsługa ruchu kursora myszki
+
+void MouseMotion( int x, int y )
+{
+    if( button_state == GLUT_DOWN )
+    {
+        rotatey += 30 *( right - left ) / glutGet( GLUT_WINDOW_WIDTH ) *( x - button_x );
+        button_x = x;
+        rotatex -= 30 *( top - bottom ) / glutGet( GLUT_WINDOW_HEIGHT ) *( button_y - y );
+        button_y = y;
+        glutPostRedisplay();
+    }
+}
+
+// obsługa menu podręcznego
+
+void Menu( int value )
+{
+    switch( value )
+    {
+        // obszar renderingu - całe okno
+    case FULL_WINDOW:
+        aspect = FULL_WINDOW;
+        Reshape( glutGet( GLUT_WINDOW_WIDTH ), glutGet( GLUT_WINDOW_HEIGHT ) );
+        break;
+       
+        // obszar renderingu - aspekt 1:1
+    case ASPECT_1_1:
+        aspect = ASPECT_1_1;
+        Reshape( glutGet( GLUT_WINDOW_WIDTH ), glutGet( GLUT_WINDOW_HEIGHT ) );
+        break;
+       
+        // wyjście
+    case EXIT:
+        exit( 0 );
+    }
+}
+
+// sprawdzenie i przygotowanie obsługi wybranych rozszerzeń
+
+void ExtensionSetup()
+{
+    // pobranie numeru wersji biblioteki OpenGL
+    const char * version =( char * ) glGetString( GL_VERSION );
+   
+    // odczyt wersji OpenGL
+    int major = 0, minor = 0;
+    if( sscanf( version, "%d.%d", & major, & minor ) != 2 )
+    {
+        #ifdef WIN32
+        printf( "Błędny format wersji OpenGL\n" );
+        #else
+       
+        printf( "Bledny format wersji OpenGL\n" );
+        #endif
+       
+        exit( 0 );
+    }
+   
+    // sprawdzenie czy jest co najmniej wersja 1.2
+    if( major > 1 || minor >= 2 )
+    {
+        // pobranie wskaźników wybranych funkcji OpenGL 1.2
+        glDrawRangeElementsEXT =
+        ( PFNGLDRAWRANGEELEMENTSEXTPROC ) wglGetProcAddress( "glDrawRangeElements" );
+    }
+    else
+   
+    // sprawdzenie czy jest obsługiwane rozszerzenie EXT_draw_range_elements
+    if( glutExtensionSupported( "GL_EXT_draw_range_elements" ) )
+    {
+        // pobranie wskaźników wybranych funkcji rozszerzenia EXT_draw_range_elements
+        glDrawRangeElementsEXT =
+        ( PFNGLDRAWRANGEELEMENTSEXTPROC ) wglGetProcAddress( "glDrawRangeElementsEXT" );
+    }
+    else
+    {
+        printf( "Brak rozszerzenia EXT_draw_range_elements!\n" );
+        glDrawRangeElementsEXT = NULL;
+    }
+}
+
+int main( int argc, char * argv[] )
+{
+    // inicjalizacja biblioteki GLUT
+    glutInit( & argc, argv );
+   
+    // inicjalizacja bufora ramki
+    glutInitDisplayMode( GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH );
+   
+    // rozmiary głównego okna programu
+    glutInitWindowSize( 500, 500 );
+   
+    // utworzenie głównego okna programu
+    #ifdef WIN32
+   
+    glutCreateWindow( "Indeksowe tablice wierzchołków" );
+    #else
+   
+    glutCreateWindow( "Indeksowe tablice wierzcholkow" );
+    #endif
+   
+    // dołączenie funkcji generującej scenę 3D
+    glutDisplayFunc( Display );
+   
+    // dołączenie funkcji wywoływanej przy zmianie rozmiaru okna
+    glutReshapeFunc( Reshape );
+   
+    // dołączenie funkcji obsługi klawiatury
+    glutKeyboardFunc( Keyboard );
+   
+    // dołączenie funkcji obsługi klawiszy funkcyjnych i klawiszy kursora
+    glutSpecialFunc( SpecialKeys );
+   
+    // obsługa przycisków myszki
+    glutMouseFunc( MouseButton );
+   
+    // obsługa ruchu kursora myszki
+    glutMotionFunc( MouseMotion );
+   
+    // utworzenie menu podręcznego
+    glutCreateMenu( Menu );
+   
+    // utworzenie podmenu - aspekt obrazu
+    int MenuAspect = glutCreateMenu( Menu );
+    #ifdef WIN32
+   
+    glutAddMenuEntry( "Aspekt obrazu - całe okno", FULL_WINDOW );
+    #else
+   
+    glutAddMenuEntry( "Aspekt obrazu - cale okno", FULL_WINDOW );
+    #endif
+   
+    glutAddMenuEntry( "Aspekt obrazu 1:1", ASPECT_1_1 );
+   
+    // menu główne
+    glutCreateMenu( Menu );
+    glutAddSubMenu( "Aspekt obrazu", MenuAspect );
+    #ifdef WIN32
+   
+    glutAddMenuEntry( "Wyjście", EXIT );
+    #else
+   
+    glutAddMenuEntry( "Wyjscie", EXIT );
+    #endif
+   
+    // określenie przycisku myszki obsługującej menu podręczne
+    glutAttachMenu( GLUT_RIGHT_BUTTON );
+   
+    // sprawdzenie i przygotowanie obsługi wybranych rozszerzeń
+    ExtensionSetup();
+   
+    // wprowadzenie programu do obsługi pętli komunikatów
+    glutMainLoop();
+    return 0;
+}
