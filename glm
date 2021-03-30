@@ -1,0 +1,250 @@
+#include <iostream>
+#include <stdio.h>
+#include <GL/glew.h>
+#include <SFML/Window.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace std;
+
+// Kody shaderów
+const GLchar* vertexSource = R"glsl(
+#version 150
+in vec2 position;
+in vec3 color;
+out vec3 Color;
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 proj;
+void main(){
+Color = color;
+gl_Position = proj * view * model * vec4(position,
+0.0, 1.0);
+}
+
+)glsl";
+
+const GLchar* fragmentSource = R"glsl(
+#version 150 core
+in vec3 Color;
+out vec4 outColor;
+void main()
+{
+outColor = vec4(Color, 1.0);
+}
+)glsl";
+
+
+
+int main()
+{
+  
+
+    sf::ContextSettings settings;
+    settings.depthBits = 24;
+    settings.stencilBits = 8;
+
+    // Okno renderingu
+    sf::Window window(sf::VideoMode(800, 600, 32), "OpenGL", sf::Style::Titlebar | sf::Style::Close, settings);
+
+    // Inicjalizacja GLEW
+    glewExperimental = GL_TRUE;
+    glewInit();
+
+    // Utworzenie VAO (Vertex Array Object)
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
+   
+
+
+   // GLuint punkty_=6;
+    // Współrzędne kwadratu, brak zastosowania bufora, występują powtórzenia wierzchołków
+    //GLfloat* vertices = new GLfloat[punkty_ * 6];
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    GLenum shape = GL_POINTS;
+    int punkty_ = 6;
+
+   
+   
+
+
+    GLfloat vertices[] = {
+         -0.5f,  0.5f, 1.0f, 0.0f, 0.0f, // Top-left
+     0.5f,  0.5f, 0.0f, 1.0f, 0.0f, // Top-right
+     0.5f, -0.5f, 0.0f, 0.0f, 1.0f, // Bottom-right
+
+     0.5f, -0.5f, 0.0f, 0.0f, 1.0f, // Bottom-right
+    -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, // Bottom-left
+    -0.5f,  0.5f, 1.0f, 0.0f, 0.0f  // Top-left
+    
+    
+};
+    
+   /* GLfloat color[] = {
+        // front colors
+     1.0, 0.0, 0.0,
+     0.0, 1.0, 0.0,
+     0.0, 0.0, 1.0,
+     1.0, 1.0, 1.0,
+     // back colors
+     1.0, 0.0, 0.0,
+     0.0, 1.0, 0.0,
+     0.0, 0.0, 1.0,
+     1.0, 1.0, 1.0
+    };
+    */
+    
+   // glm::mat4 model = glm::mat4(1.0f);
+   // model = glm::rotate(model, glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+   // GLint uniTrans = glGetUniformLocation(shaderProgram, "model");
+   // glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
+    
+
+    // glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    // glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*punkty_*6, vertices, GL_STATIC_DRAW);
+
+     // Utworzenie i skompilowanie shadera wierzchołków
+    GLuint vertexShader =
+        glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexSource, NULL);
+    glCompileShader(vertexShader);
+
+    // Sprawdzenie poprawności kompilacji shadera wierzchołków
+    GLint status_vertex;
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &status_vertex);
+
+    if (status_vertex != GL_TRUE) //warunek sprawdzajacy poprawnosc kodu
+    {
+
+        char buffer[512];
+
+        glGetProgramInfoLog(vertexShader, 512, NULL, buffer);
+        std::cout << "Compilation vertexShader error: " << buffer << endl;
+
+    }
+    cout << "Compliation vertexShader OK " << endl;
+
+
+
+
+    // Utworzenie i skompilowanie shadera fragmentów
+    GLuint fragmentShader =
+        glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
+    glCompileShader(fragmentShader);
+
+
+    // Sprawdzenie poprawnosci kompilacji shadera fragmentów
+    GLint status_fragment;
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &status_fragment);
+    if (status_fragment != GL_TRUE) {
+
+        cout << "Compilation fragmentShader error: " << endl;
+
+        char buffer[512];
+
+        glGetProgramInfoLog(fragmentShader, 512, NULL, buffer);
+        std::cout << buffer << std::endl;
+
+
+        return 1;
+    }
+    cout << "Compilation fragmentShader OK " << endl;
+
+
+
+    // Zlinkowanie obu shaderów w jeden wspólny program
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    // glBindFragDataLocation(shaderProgram, 0, "outColor");
+    glLinkProgram(shaderProgram);
+    glUseProgram(shaderProgram);
+
+    // Specifikacja formatu danych wierzchołkowych
+    GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
+    glEnableVertexAttribArray(posAttrib);
+    glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
+    GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
+    glEnableVertexAttribArray(colAttrib);
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+    //sf::Event event;
+
+    glm::mat4 model;
+    model = glm::rotate(model, glm::radians(180.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f));
+
+    glm::vec4 result = model *
+        glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    cout << "(" << result.x << " " << result.y << " "
+        << result.z << ")" << endl;
+
+    GLint uniTrans = glGetUniformLocation(shaderProgram, "model");
+    glUniformMatrix4fv(uniTrans, 1, GL_FALSE,
+        glm::value_ptr(model));
+    // Rozpoczęcie pętli zdarzeń
+    bool running = true;
+    while (running) {
+        sf::Event windowEvent;
+        while (window.pollEvent(windowEvent)) {
+            switch (windowEvent.type)
+            {
+            case sf::Event::Closed:
+                running = false;
+                break;
+            case sf::Event::KeyPressed:
+                switch (windowEvent.key.code)
+                {
+                case sf::Keyboard::Escape:
+                    std::cout << "Przycisniety zostal przycisk ESCAPE" << std::endl;
+                    running = false;
+                    break;
+
+             
+                }
+                /*
+            case sf::Event::MouseMoved:
+                std::cout << "Mysza została ruszona na pozycje: ";
+                std::cout << windowEvent.mouseMove.y << std::endl;
+                if (windowEvent.mouseMove.y > 2)
+                    punkty_ = windowEvent.mouseMove.y;
+                //Making_Geometric_Shape(vbo, punkty_);
+                break;
+
+                */
+
+                //if(windowEvent.mouseMove.y>mouse_y)
+
+            }
+        }
+
+
+        // Nadanie scenie koloru czarnego
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // Narysowanie kwadratu na podstawie 6 wierzchołków (funckja rysuje 2 trójkąty równoboczne)
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        // Wymiana buforów tylni/przedni
+        window.display();
+    }
+
+    
+
+   
+
+    // Kasowanie programu i czyszczenie buforów
+    glDeleteProgram(shaderProgram);
+    glDeleteShader(fragmentShader);
+    glDeleteShader(vertexShader);
+    glDeleteBuffers(1, &vbo);
+    //glDeleteBuffers(1, &vbo);
+    glDeleteVertexArrays(1, &vao);
+    // Zamknięcie okna renderingu
+    window.close();
+    return 0;
+}
